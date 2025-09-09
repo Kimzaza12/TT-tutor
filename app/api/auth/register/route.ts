@@ -1,26 +1,40 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { hashPin, setSessionCookie } from "@/lib/auth";
+import { COOKIE_NAME, hashPin, sessionCookieOptions } from "@/lib/auth";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+type Body = { alias?: unknown; pin?: unknown };
 
 export async function POST(req: Request) {
-  const { alias, pin } = await req.json();
-  const a = String(alias || "").trim();
-  const p = String(pin || "").trim();
-  if (!a || !/^\d{4}$/.test(p)) {
-    return NextResponse.json({ error: "invalid alias or pin" }, { status: 400 });
-  }
-  const aliasLower = a.toLowerCase();
+  let alias = "";
+  let pin = "";
+  try {
+    const b = (await req.json()) as Body;
+    if (typeof b.alias === "string") alias = b.alias.trim();
+    if (typeof b.pin === "string") pin = b.pin.trim();
+  } catch {}
 
-  const existed = await prisma.user.findUnique({ where: { aliasLower } });
-  if (existed) {
+  if (!alias) return NextResponse.json({ error: "missing alias" }, { status: 400 });
+  if (!pin) return NextResponse.json({ error: "missing pin" }, { status: 400 });
+
+  const aliasLower = alias.toLowerCase();
+
+  const exists = await prisma.user.findUnique({ where: { aliasLower } });
+  if (exists) {
     return NextResponse.json({ error: "alias already exists" }, { status: 409 });
   }
 
-  const user = await prisma.user.create({
-    data: { alias: a, aliasLower, pinHash: hashPin(p, aliasLower) },
+  const created = await prisma.user.create({
+    data: {
+      alias,
+      aliasLower,
+      pinHash: hashPin(pin, aliasLower),
+    },
   });
 
-  const res = NextResponse.json({ alias: user.alias }, { status: 201 });
-  setSessionCookie(res, user.id);   // ← ตั้งคุกกี้บน response
+  const res = NextResponse.json({ ok: true, alias: created.alias }, { status: 201 });
+  res.cookies.set(COOKIE_NAME, String(created.id), sessionCookieOptions());
   return res;
 }
