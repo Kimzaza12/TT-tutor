@@ -14,7 +14,7 @@ type MessageRow = ReplyRow & { replies: ReplyRow[] };
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET(_req: Request) {
+export async function GET() {
   const raw = await prisma.message.findMany({
     where: { parentId: null },
     include: {
@@ -53,25 +53,28 @@ export async function GET(_req: Request) {
   return NextResponse.json(mapped);
 }
 
+type PostBody = { text?: unknown; parentId?: unknown };
+
 export async function POST(req: Request) {
   const user = await getSessionUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  // 👇 ป้องกัน body ว่าง/ไม่ใช่ JSON
-  let payload: any = {};
+  // ป้องกัน body ว่าง/ไม่ใช่ JSON และเลี่ยง any
+  let bodyText = "";
+  let parentId: number | null = null;
   try {
-    // ถ้ามี body และเป็น JSON ถึงจะ parse; ถ้าว่าง จะเข้า catch แล้วปล่อยเป็น {}
-    payload = await req.json();
+    const payload = (await req.json()) as PostBody;
+    if (typeof payload.text === "string") bodyText = payload.text.trim();
+    if (typeof payload.parentId === "number") parentId = payload.parentId;
+    else if (typeof payload.parentId === "string" && payload.parentId.trim() !== "") {
+      const n = Number(payload.parentId);
+      if (Number.isFinite(n)) parentId = n;
+    }
   } catch {
-    payload = {};
+    // ไม่มี body หรือไม่ใช่ JSON ก็ปล่อยให้ตรวจต่อด้านล่าง
   }
 
-  const text = (payload?.text ?? "").toString().trim();
-  const parentId = payload?.parentId != null ? Number(payload.parentId) : null;
-
-  if (!text) {
-    return NextResponse.json({ error: "missing text" }, { status: 400 });
-  }
+  if (!bodyText) return NextResponse.json({ error: "missing text" }, { status: 400 });
   if (parentId !== null && (!Number.isFinite(parentId) || parentId <= 0)) {
     return NextResponse.json({ error: "invalid parentId" }, { status: 400 });
   }
@@ -80,7 +83,7 @@ export async function POST(req: Request) {
     data: {
       userId: user.id,
       alias: user.alias,
-      text,
+      text: bodyText,
       parentId,
     },
   });

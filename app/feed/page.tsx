@@ -36,7 +36,7 @@ export default function FeedPage() {
   const [messages, setMessages] = React.useState<Message[]>([]);
   // pending ลบ: map<messageId, untilEpochMs>
   const [pending, setPending] = React.useState<Record<number, number>>({});
-  const timersRef = React.useRef<Record<number, any>>({});
+  const timersRef = React.useRef<Record<number, ReturnType<typeof setTimeout>>>({});
 
   React.useEffect(() => {
     (async () => {
@@ -44,8 +44,7 @@ export default function FeedPage() {
       if (!me?.alias) { router.push("/alias"); return; }
       await refresh();
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [router]);
 
   async function refresh() {
     const data: Message[] = await fetch("/api/messages", { cache: "no-store" }).then((r) => r.json());
@@ -62,32 +61,30 @@ export default function FeedPage() {
     es.addEventListener("like:toggled", onRefresh);
 
     es.addEventListener("message:softDeleted", (ev) => {
-      // clear pending UI แล้วรีเฟรช
       try {
-        const { id } = JSON.parse((ev as MessageEvent).data);
-        setPending((p) => { const n = { ...p }; delete n[id]; return n; });
+        const parsed = JSON.parse(String((ev as MessageEvent).data)) as { id: number };
+        setPending((p) => { const n = { ...p }; delete n[parsed.id]; return n; });
       } catch {}
       refresh();
     });
 
     es.addEventListener("message:pendingDelete", (ev) => {
       try {
-        const { id, until } = JSON.parse((ev as MessageEvent).data) as { id: number; until: number };
-        setPending((p) => ({ ...p, [id]: until }));
+        const parsed = JSON.parse(String((ev as MessageEvent).data)) as { id: number; until: number };
+        setPending((p) => ({ ...p, [parsed.id]: parsed.until }));
       } catch {}
     });
 
     es.addEventListener("message:pendingCancel", (ev) => {
       try {
-        const { id } = JSON.parse((ev as MessageEvent).data) as { id: number };
-        setPending((p) => { const n = { ...p }; delete n[id]; return n; });
+        const parsed = JSON.parse(String((ev as MessageEvent).data)) as { id: number };
+        setPending((p) => { const n = { ...p }; delete n[parsed.id]; return n; });
       } catch {}
     });
 
     es.onerror = () => { /* ให้ browser reconnect เอง */ };
 
     return () => es.close();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const roots = React.useMemo(
@@ -136,13 +133,12 @@ export default function FeedPage() {
 
     const res = await fetch(`/api/messages/${id}/soft-delete/start`, { method: "POST" });
     if (!res.ok) { alert("เริ่มลบไม่สำเร็จ"); return; }
-    const { until } = await res.json(); // เวลาเซิร์ฟเวอร์
+    const { until } = await res.json() as { until: number };
     setPending((p) => ({ ...p, [id]: until }));
 
     const ms = Math.max(0, until - Date.now());
     const tid = setTimeout(async () => {
       await fetch(`/api/messages/${id}/soft-delete`, { method: "POST" });
-      // เมื่อ commit เสร็จ server จะ broadcast "message:softDeleted" → เรา refresh เองใน listener แล้ว
       delete timersRef.current[id];
     }, ms);
     timersRef.current[id] = tid;

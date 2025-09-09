@@ -29,7 +29,7 @@ export function sseConnect(): Response {
 }
 
 /** กระจายอีเวนต์ไปยังทุก client */
-export function sseBroadcast(event: string, data: any) {
+export function sseBroadcast(event: string, data: unknown) {
   const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
   const chunk = encoder.encode(payload);
   for (const c of clients) {
