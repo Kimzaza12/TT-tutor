@@ -9,26 +9,40 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id         Int      @id @default(autoincrement())
+  alias      String
+  aliasLower String   @unique
+  pinHash    String
+  createdAt  DateTime @default(now())
+
+  messages Message[]
+  likes    Like[]
+}
+
 model Message {
-  id          Int       @id @default(autoincrement())
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  user        User     @relation(fields: [userId], references: [id])
   alias       String
   text        String
-  createdAt   DateTime  @default(now())
-  softDeleted Boolean   @default(false)
+  createdAt   DateTime @default(now())
+  softDeleted Boolean  @default(false)
 
   parentId Int?
-  parent   Message? @relation("Replies", fields: [parentId], references: [id])
+  parent   Message?  @relation("Replies", fields: [parentId], references: [id])
   replies  Message[] @relation("Replies")
 
-  likes    Like[]
+  likes Like[]
 }
 
 model Like {
   id        Int      @id @default(autoincrement())
-  alias     String
-  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   messageId Int
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
   createdAt DateTime @default(now())
 
-  @@unique([messageId, alias])
+  @@unique([messageId, userId])
 }

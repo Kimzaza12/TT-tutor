@@ -1,8 +1,8 @@
 'use client';
-import React from 'react';
+import React from "react";
 
 export default function Avatar({ alias }: { alias: string }) {
-  const letter = (alias || '?').trim().charAt(0).toUpperCase();
+  const letter = (alias || "?").trim().charAt(0).toUpperCase();
   const hue = React.useMemo(() => {
     let h = 0;
     for (let i = 0; i < alias.length; i++) h = (h * 31 + alias.charCodeAt(i)) % 360;
@@ -15,7 +15,7 @@ export default function Avatar({ alias }: { alias: string }) {
       style={{ background: `hsl(${hue} 70% 45%)` }}
       title={alias}
     >
-      {letter || '?'}
+      {letter || "?"}
     </div>
   );
 }

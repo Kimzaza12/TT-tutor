@@ -1,35 +1,92 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getSessionUser } from "@/lib/auth";
+import { sseBroadcast } from "@/lib/sse";
 
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const parentId = searchParams.get("parentId");
-  const where = parentId ? { parentId: Number(parentId), softDeleted: false } : { parentId: null };
-  const include = parentId
-    ? { likes: true }
-    : { likes: true, replies: { where: { softDeleted: false }, include: { likes: true }, orderBy: { createdAt: "asc" } } };
+/** ------- minimal types ที่ตรงกับ include ------- */
+type LikeWithUserRow = { user: { alias: string } };
+type ReplyRow = {
+  id: number; alias: string; text: string; createdAt: Date;
+  softDeleted: boolean; parentId: number | null; likes: LikeWithUserRow[];
+};
+type MessageRow = ReplyRow & { replies: ReplyRow[] };
 
-  const messages = await prisma.message.findMany({ where, include, orderBy: { createdAt: "desc" } });
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-  const mapped = messages.map((m: any) => ({
-    ...m,
-    likedByAliases: m.likes.map((l: any) => l.alias),
-    likes: undefined,
-    replies: m.replies
-      ? m.replies.map((r: any) => ({ ...r, likedByAliases: r.likes.map((l: any) => l.alias), likes: undefined }))
-      : undefined,
+export async function GET(_req: Request) {
+  const raw = await prisma.message.findMany({
+    where: { parentId: null },
+    include: {
+      user: true,
+      likes: { include: { user: true } },
+      replies: {
+        where: { softDeleted: false },
+        orderBy: { createdAt: "asc" },
+        include: { user: true, likes: { include: { user: true } } },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const messages = raw as unknown as MessageRow[];
+
+  const mapped = messages.map((m) => ({
+    id: m.id,
+    alias: m.alias,
+    text: m.text,
+    createdAt: m.createdAt,
+    softDeleted: m.softDeleted,
+    parentId: m.parentId,
+    likedByAliases: m.likes.map((l) => l.user.alias),
+    replies: m.replies.map((r) => ({
+      id: r.id,
+      alias: r.alias,
+      text: r.text,
+      createdAt: r.createdAt,
+      softDeleted: r.softDeleted,
+      parentId: r.parentId,
+      likedByAliases: r.likes.map((l) => l.user.alias),
+    })),
   }));
 
   return NextResponse.json(mapped);
 }
 
-export async function POST(request: Request) {
-  const body = await request.json();
-  const alias = String(body.alias || "").trim();
-  const text = String(body.text || "").trim();
-  const parentId = body.parentId ? Number(body.parentId) : null;
-  if (!alias || !text) return NextResponse.json({ error: "missing fields" }, { status: 400 });
+export async function POST(req: Request) {
+  const user = await getSessionUser();
+  if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-  const created = await prisma.message.create({ data: { alias, text, parentId } });
+  // 👇 ป้องกัน body ว่าง/ไม่ใช่ JSON
+  let payload: any = {};
+  try {
+    // ถ้ามี body และเป็น JSON ถึงจะ parse; ถ้าว่าง จะเข้า catch แล้วปล่อยเป็น {}
+    payload = await req.json();
+  } catch {
+    payload = {};
+  }
+
+  const text = (payload?.text ?? "").toString().trim();
+  const parentId = payload?.parentId != null ? Number(payload.parentId) : null;
+
+  if (!text) {
+    return NextResponse.json({ error: "missing text" }, { status: 400 });
+  }
+  if (parentId !== null && (!Number.isFinite(parentId) || parentId <= 0)) {
+    return NextResponse.json({ error: "invalid parentId" }, { status: 400 });
+  }
+
+  const created = await prisma.message.create({
+    data: {
+      userId: user.id,
+      alias: user.alias,
+      text,
+      parentId,
+    },
+  });
+
+  // แจ้งทุก client ให้รีเฟรช (โพสต์/คอมเมนต์ใหม่)
+  sseBroadcast("message:new", { id: created.id, parentId: created.parentId });
+
   return NextResponse.json(created, { status: 201 });
 }

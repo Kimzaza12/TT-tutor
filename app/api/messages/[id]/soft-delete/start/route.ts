@@ -3,6 +3,8 @@ import { prisma } from "@/lib/prisma";
 import { getSessionUser } from "@/lib/auth";
 import { sseBroadcast } from "@/lib/sse";
 
+const PENDING_MS = 5000;
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -23,8 +25,8 @@ export async function POST(
   if (!msg) return NextResponse.json({ error: "not found" }, { status: 404 });
   if (msg.userId !== user.id) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
-  await prisma.message.update({ where: { id: msgId }, data: { softDeleted: true } });
+  const until = Date.now() + PENDING_MS;
+  sseBroadcast("message:pendingDelete", { id: msgId, until });
 
-  sseBroadcast("message:softDeleted", { id: msgId });
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ id: msgId, until });
 }

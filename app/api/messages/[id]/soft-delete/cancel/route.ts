@@ -23,8 +23,6 @@ export async function POST(
   if (!msg) return NextResponse.json({ error: "not found" }, { status: 404 });
   if (msg.userId !== user.id) return NextResponse.json({ error: "forbidden" }, { status: 403 });
 
-  await prisma.message.update({ where: { id: msgId }, data: { softDeleted: true } });
-
-  sseBroadcast("message:softDeleted", { id: msgId });
+  sseBroadcast("message:pendingCancel", { id: msgId });
   return NextResponse.json({ ok: true });
 }
