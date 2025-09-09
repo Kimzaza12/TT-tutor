@@ -1,0 +1,34 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Message {
+  id          Int       @id @default(autoincrement())
+  alias       String
+  text        String
+  createdAt   DateTime  @default(now())
+  softDeleted Boolean   @default(false)
+
+  parentId Int?
+  parent   Message? @relation("Replies", fields: [parentId], references: [id])
+  replies  Message[] @relation("Replies")
+
+  likes    Like[]
+}
+
+model Like {
+  id        Int      @id @default(autoincrement())
+  alias     String
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  messageId Int
+  createdAt DateTime @default(now())
+
+  @@unique([messageId, alias])
+}

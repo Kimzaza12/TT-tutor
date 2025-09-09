@@ -1,17 +1,16 @@
+import type { Metadata } from "next";
+import "./globals.css"; // <-- สำคัญ: ให้ Tailwind ทำงาน
 
-import type { ReactNode } from "react";
-import Navbar from "@/components/Navbar";
-import "./globals.css";
+export const metadata: Metadata = {
+  title: "Vent App",
+  description: "พื้นที่ระบายความในใจ — Next.js",
+};
 
-export default function RootLayout({ children }: { children: ReactNode }) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
-      <body className="min-h-[calc(105dvh-64px)] ">
-      {/* <body className="min-h-[calc(105dvh-64px)] flex justify-center content-center"></body> */}
-
-        <Navbar />
-        {children}
-      </body>
+    <html lang="th">
+      {/* ใส่ children ลงใน body และตั้งพื้นหลังด้วย Tailwind */}
+      <body className="bg-gray-100">{children}</body>
     </html>
   );
 }
